@@ -207,8 +207,11 @@ async function processTask(id: number, config: AIConfig) {
 
     if (type === 'image') {
       const adapter = getImageAdapter(config.provider)
-      const resolvedReferenceImages = await normalizeReferenceImages(params.referenceImages)
-      ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
+      const uploads = adapter.uploadsReferenceMedia === true
+      const resolvedReferenceImages = uploads
+        ? rawReferenceList(params.referenceImages)
+        : await normalizeReferenceImages(params.referenceImages)
+      ;({ url, method, headers, body } = await adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
         prompt: record.prompt,
@@ -218,15 +221,24 @@ async function processTask(id: number, config: AIConfig) {
       }))
     } else {
       const adapter = getVideoAdapter(config.provider)
-      const resolvedImageUrl = await normalizeVideoReferenceUrl(params.imageUrl)
-      const resolvedFirstFrameUrl = await normalizeVideoReferenceUrl(params.firstFrameUrl)
-      const resolvedLastFrameUrl = await normalizeVideoReferenceUrl(params.lastFrameUrl)
-      const resolvedReferenceImageUrls = await normalizeVideoReferenceUrls(params.referenceImageUrls)
+      // uploadsReferenceMedia 的厂商要的是上传后的素材 ID，本地路径直接读文件上传即可，
+      // 无需压缩为 dataURL，也不依赖 PUBLIC_BASE_URL 暴露内网地址。
+      const uploads = adapter.uploadsReferenceMedia === true
+      const resolvedImageUrl = uploads ? rawReference(params.imageUrl) : await normalizeVideoReferenceUrl(params.imageUrl)
+      const resolvedFirstFrameUrl = uploads ? rawReference(params.firstFrameUrl) : await normalizeVideoReferenceUrl(params.firstFrameUrl)
+      const resolvedLastFrameUrl = uploads ? rawReference(params.lastFrameUrl) : await normalizeVideoReferenceUrl(params.lastFrameUrl)
+      const resolvedReferenceImageUrls = uploads
+        ? rawReferenceList(params.referenceImageUrls)
+        : await normalizeVideoReferenceUrls(params.referenceImageUrls)
       // 参考视频/音频文件较大，不适合 dataURL 内联，需解析为公网可访问 URL
-      const resolvedReferenceVideoUrls = resolvePublicMediaUrls(params.referenceVideoUrls, 'video')
-      const resolvedReferenceAudioUrls = resolvePublicMediaUrls(params.referenceAudioUrls, 'audio')
-      const resolvedReferenceFileUrl = resolvePublicMediaUrl(params.referenceFileUrl, 'file')
-      ;({ url, method, headers, body } = adapter.buildGenerateRequest(config, {
+      const resolvedReferenceVideoUrls = uploads
+        ? rawReferenceList(params.referenceVideoUrls)
+        : resolvePublicMediaUrls(params.referenceVideoUrls, 'video')
+      const resolvedReferenceAudioUrls = uploads
+        ? rawReferenceList(params.referenceAudioUrls)
+        : resolvePublicMediaUrls(params.referenceAudioUrls, 'audio')
+      const resolvedReferenceFileUrl = uploads ? rawReference(params.referenceFileUrl) : resolvePublicMediaUrl(params.referenceFileUrl, 'file')
+      ;({ url, method, headers, body } = await adapter.buildGenerateRequest(config, {
         id: record.id,
         model: record.model,
         prompt: record.prompt,
@@ -368,7 +380,7 @@ async function pollTask(record: SysTaskRecord, config: AIConfig, taskId: string)
       const result = await resp.json() as any
 
       // 图片/视频 PollResponse 结构不同，这里统一按 any 取值后按 type 分支
-      const pollResp: any = adapter.parsePollResponse(result)
+      const pollResp: any = await adapter.parsePollResponse(result, { config, taskId })
 
       if (pollResp.status === 'completed') {
         if (type === 'image') {
@@ -545,6 +557,15 @@ async function normalizeVideoReferenceUrls(refs: string[] | null | undefined): P
     Array.from(new Set(refs.map((item) => String(item || '').trim()).filter(Boolean))).map((item) => normalizeVideoReferenceUrl(item)),
   )
   return normalized.filter((item): item is string => !!item)
+}
+
+function rawReference(value: string | null | undefined): string | null {
+  return String(value || '').trim() || null
+}
+
+function rawReferenceList(refs: string[] | null | undefined): string[] {
+  if (!Array.isArray(refs)) return []
+  return Array.from(new Set(refs.map((item) => String(item || '').trim()).filter(Boolean)))
 }
 
 /**

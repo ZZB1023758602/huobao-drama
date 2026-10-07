@@ -45,9 +45,15 @@ export async function saveUploadedFile(data: ArrayBuffer, subDir: string, origin
 
 function getExtFromUrl(url: string): string {
   try {
-    const pathname = new URL(url).pathname
-    const ext = path.extname(pathname)
-    if (ext && ext.length <= 5) return ext
+    const parsed = new URL(url)
+    const pathnameExt = path.extname(parsed.pathname)
+    if (pathnameExt && pathnameExt.length <= 5) return pathnameExt
+    // 自建服务（ComfyUI 类）的下载地址扩展名在查询参数里，如 /outputs/download?relativePath=image/x.png
+    for (const key of ['relativePath', 'filename', 'name']) {
+      const value = parsed.searchParams.get(key)
+      const queryExt = value ? path.extname(value) : ''
+      if (queryExt && queryExt.length <= 5) return queryExt
+    }
   } catch {}
   return '.bin'
 }

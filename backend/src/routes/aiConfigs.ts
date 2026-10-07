@@ -107,6 +107,16 @@ function buildProbe(serviceType: string, provider: string, baseUrl: string, mode
     }
   }
 
+  if (p === 'quickstudio') {
+    // 自建 WalkingwithAI Studio：health 同时反映 ComfyUI 与 GPU 就绪状态，服务默认无鉴权
+    return {
+      method: 'GET',
+      url: joinProviderUrl(baseUrl, '/api/v1', '/health'),
+      headers: bearerHeaders(apiKey),
+      body: undefined,
+    }
+  }
+
   return {
     method: 'GET',
     url: joinProviderUrl(baseUrl, '', m ? `/${m}` : '/'),

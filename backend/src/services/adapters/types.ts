@@ -6,11 +6,17 @@ export interface ImageProviderAdapter {
   provider: string
 
   /**
+   * true 表示参考素材由适配器自行上传（自建推理服务按 asset_id 引用素材）。
+   * 此时引擎跳过参考图 dataURL 压缩与 PUBLIC_BASE_URL 解析，原样传入本地路径/URL。
+   */
+  uploadsReferenceMedia?: boolean
+
+  /**
    * 构建图片生成请求
    * @param config AI 配置 { baseUrl, apiKey, model }
    * @param record 图片生成记录
    */
-  buildGenerateRequest(config: AIConfig, record: ImageGenerationRecord): ProviderRequest
+  buildGenerateRequest(config: AIConfig, record: ImageGenerationRecord): ProviderRequest | Promise<ProviderRequest>
 
   /**
    * 解析生成响应，判断是同步还是异步
@@ -25,9 +31,10 @@ export interface ImageProviderAdapter {
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
 
   /**
-   * 解析轮询响应
+   * 解析轮询响应。可返回 Promise：产物地址需要额外一次请求的厂商（自建服务、ComfyUI 类）
+   * 在状态到达终态时自行补拉产物列表，此时需要 context 里的 baseUrl 与 taskId。
    */
-  parsePollResponse(result: any): ImagePollResponse
+  parsePollResponse(result: any, context?: PollContext): ImagePollResponse | Promise<ImagePollResponse>
 
   /**
    * 从响应中提取图片 URL（用于直接下载）
@@ -48,15 +55,23 @@ export interface ImageProviderAdapter {
 export interface VideoProviderAdapter {
   provider: string
 
-  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest
+  uploadsReferenceMedia?: boolean
+
+  buildGenerateRequest(config: AIConfig, record: VideoGenerationRecord): ProviderRequest | Promise<ProviderRequest>
 
   parseGenerateResponse(result: any): VideoGenResponse
 
   buildPollRequest(config: AIConfig, taskId: string): ProviderRequest
 
-  parsePollResponse(result: any): VideoPollResponse
+  parsePollResponse(result: any, context?: PollContext): VideoPollResponse | Promise<VideoPollResponse>
 
   extractVideoUrl(result: any): string | null
+}
+
+/** 轮询上下文：供需要在终态时二次请求产物的适配器使用 */
+export interface PollContext {
+  config: AIConfig
+  taskId: string
 }
 
 // ============ 通用类型 ============
